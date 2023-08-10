@@ -9,21 +9,29 @@ import Foundation
 import SwiftUI
 struct GameModel{
     
+    
     private(set) var cards : Array<Card> = []
     
     
-    private(set) var cardsOnTable : Array<Card> = []
+    private(set) var cardsOnTable : Array<Int> = []
+    
+    private(set) var cardsInDeck : Array<Int> = []
+    
+    private(set) var discardPile : Array<Int> = []
     
     var nextDrawnIndex : Int
     
-    var newCardsNextRound : Bool
+    var matchedThisRound : Bool
+    
+    var newRound : Bool
     
     var outOfCards : Bool
     
     init() {
         var id = 0
-        nextDrawnIndex = 12
-        newCardsNextRound = false
+        nextDrawnIndex = 0
+        newRound = true
+        matchedThisRound = false
         outOfCards = false
         for numbers in  1...3 {
             for shapes in Shape.allCases {
@@ -35,15 +43,17 @@ struct GameModel{
                 }
             }
         }
-        cards.shuffle()
-        for nums in 0..<12{
-            cardsOnTable.append(cards[nums])
+//        cards.shuffle()
+        for nums in 0..<81{
+            cardsInDeck.append(cards[nums].id)
         }
     }
     struct Card: Identifiable{
         var misMatch = false
         var isMathced = false
         var isSelected = false
+        var misMatchShake = false
+        var isFaceDown = true
         let number : Int
         let shape : Shape
         let shading : Shading
@@ -67,59 +77,27 @@ struct GameModel{
         case Green
     }
     
-    var selectedCards = Array<Int>()
+    var selectedCards = Array<Card>()
     
-    mutating func choose(_ card: Int){
-        
-//      set index
-        let chosenIndex = card
-        
-//        set new cards
-        if(newCardsNextRound){
-            if !cardsOnTable[chosenIndex].isMathced
-            {
-               dealNewCards()
-            }else{
-                return
-            }
-
-            
-        }
-        
-//      reset all mismatch
-        for index in 0..<cardsOnTable.count{
-            cardsOnTable[index].misMatch=false
-        }
-        
-
-        
-//      can't select matched cards
-        if cardsOnTable[chosenIndex].isMathced{
-            return
-        }
-        
-        
-//      keeping track of selected cards
-        if !cardsOnTable[chosenIndex].isSelected{
-            selectedCards.append(chosenIndex)
+    func findIndexInCards(_ Id:Int) -> Int{
+        if let cardIndex = cards.firstIndex(where: {$0.id == Id}){
+            return(cardIndex)
         }else{
-            if let removeIndex = selectedCards.firstIndex(of: chosenIndex){
-                selectedCards.remove(at: removeIndex)
-            }
+            print("cant find index")
+            return(0)
         }
-        
-        print(selectedCards)
-        cardsOnTable[chosenIndex].isSelected.toggle()
-        
+    }
+    
+    mutating func tryMatch(){
         
         if selectedCards.count==3{
     
             //matchmaking here
             var aspects = Array<Bool>()
-            aspects.append(checkNumber(indices: selectedCards))
-            aspects.append(checkShape(indices: selectedCards))
-            aspects.append(checkShading(indices: selectedCards))
-            aspects.append(checkColor(indices: selectedCards))
+            aspects.append(checkNumber(selectedCards))
+            aspects.append(checkShape(selectedCards))
+            aspects.append(checkShading(selectedCards))
+            aspects.append(checkColor(selectedCards))
             
             
             var matched = true
@@ -130,77 +108,152 @@ struct GameModel{
                 }
             }
             if matched{
-                cardsOnTable[selectedCards[0]].isMathced=true
-                cardsOnTable[selectedCards[1]].isMathced=true
-                cardsOnTable[selectedCards[2]].isMathced=true
-                newCardsNextRound = true
+                cards[findIndexInCards(selectedCards[0].id)].isMathced=true
+                cards[findIndexInCards(selectedCards[1].id)].isMathced=true
+                cards[findIndexInCards(selectedCards[2].id)].isMathced=true
+                matchedThisRound = true
             }
             else{
-                cardsOnTable[selectedCards[0]].misMatch=true
-                cardsOnTable[selectedCards[1]].misMatch=true
-                cardsOnTable[selectedCards[2]].misMatch=true
-                selectedCards.removeAll()
+                cards[findIndexInCards(selectedCards[0].id)].misMatch=true
+                cards[findIndexInCards(selectedCards[1].id)].misMatch=true
+                cards[findIndexInCards(selectedCards[2].id)].misMatch=true
+//                selectedCards.removeAll()
             }
-            
-            for nums in 0..<cardsOnTable.count{
-                cardsOnTable[nums].isSelected = false
-            }
+//            deselect all
+//            for index in 0..<cards.count{
+//                cards[index].isSelected = false
+//            }
 
             
         }
+    }
+    mutating func dealMismatch(){
+        if !matchedThisRound{
+            if selectedCards.count==3{
+                cards[findIndexInCards(selectedCards[0].id)].misMatch=true
+                cards[findIndexInCards(selectedCards[1].id)].misMatch=true
+                cards[findIndexInCards(selectedCards[2].id)].misMatch=true
+                cards[findIndexInCards(selectedCards[0].id)].misMatchShake=true
+                cards[findIndexInCards(selectedCards[1].id)].misMatchShake=true
+                cards[findIndexInCards(selectedCards[2].id)].misMatchShake=true
+            }
+        }
+    }
+    mutating func resetShake(){
+        if !matchedThisRound{
+            if selectedCards.count==3{
+                cards[findIndexInCards(selectedCards[0].id)].misMatchShake=false
+                cards[findIndexInCards(selectedCards[1].id)].misMatchShake=false
+                cards[findIndexInCards(selectedCards[2].id)].misMatchShake=false
+                selectedCards.removeAll()
+                //            deselect all
+                for index in 0..<cards.count{
+                    cards[index].isSelected = false
+                }
+            }
+        }
+
+        
+    }
+    
+    mutating func checkIfNeedRemoveMatchedCards(_ card: Card){
+        //        set new cards
+                if(matchedThisRound){
+                    if !card.isMathced
+                    {
+                       removeMatchedCards()
+                    }else{
+                        return
+                    }
+                }
+    }
+    
+    mutating func choose(_ card: Card){
+        
+      
+//      reset all mismatch
+        for index in cardsOnTable{
+            if let cardIndex = cards.firstIndex(where: {$0.id == index}){
+                cards[cardIndex].misMatch = false
+            }
+            else
+            {
+                print("error cant find card on cardsOnTable")
+            }
+        }
+        
+
+        
+//      can't select matched cards
+        if card.isMathced{
+            return
+        }
+        
+        
+//      keeping track of selected cards
+        if !card.isSelected{
+            selectedCards.append(card)
+        }else{
+            if let removeIndex = selectedCards.firstIndex(where: {$0.id == card.id}){
+                selectedCards.remove(at: removeIndex)
+            }
+        }
+        
+        cards[findIndexInCards(card.id)].isSelected.toggle()
+        
     }
     
     
     //messy try to shrink these down to a single func
     
-    func checkNumber(indices : [Int]) -> Bool{
-        if cardsOnTable[indices[0]].number == cardsOnTable[indices[1]].number &&
-           cardsOnTable[indices[1]].number == cardsOnTable[indices[2]].number {
+    func checkNumber(_ SelectesCards : [Card]) -> Bool{
+        if SelectesCards[0].number == SelectesCards[1].number &&
+            SelectesCards[1].number == SelectesCards[2].number {
             return true
         }
-        if cardsOnTable[indices[0]].number != cardsOnTable[indices[1]].number &&
-           cardsOnTable[indices[1]].number != cardsOnTable[indices[2]].number &&
-           cardsOnTable[indices[2]].number != cardsOnTable[indices[0]].number {
+        if SelectesCards[0].number != SelectesCards[1].number &&
+            SelectesCards[1].number != SelectesCards[2].number &&
+            SelectesCards[2].number != SelectesCards[0].number {
             return true
         }
         return false
     }
     
 
-    func checkShape(indices : [Int])->Bool{
-        if cardsOnTable[indices[0]].shape == cardsOnTable[indices[1]].shape &&
-           cardsOnTable[indices[1]].shape == cardsOnTable[indices[2]].shape {
+    func checkShape(_ SelectesCards : [Card])->Bool{
+        if SelectesCards[0].shape == SelectesCards[1].shape &&
+            SelectesCards[1].shape == SelectesCards[2].shape {
             return true
         }
-        if cardsOnTable[indices[0]].shape != cardsOnTable[indices[1]].shape &&
-           cardsOnTable[indices[1]].shape != cardsOnTable[indices[2]].shape &&
-           cardsOnTable[indices[2]].shape != cardsOnTable[indices[0]].shape {
-            return true
-        }
-        return false
-    }
-    
-    func checkShading(indices : [Int])->Bool{
-        if cardsOnTable[indices[0]].shading == cardsOnTable[indices[1]].shading &&
-           cardsOnTable[indices[1]].shading == cardsOnTable[indices[2]].shading {
-            return true
-        }
-        if cardsOnTable[indices[0]].shading != cardsOnTable[indices[1]].shading &&
-           cardsOnTable[indices[1]].shading != cardsOnTable[indices[2]].shading &&
-           cardsOnTable[indices[2]].shading != cardsOnTable[indices[0]].shading {
+        if SelectesCards[0].shape != SelectesCards[1].shape &&
+            SelectesCards[1].shape != SelectesCards[2].shape &&
+            SelectesCards[2].shape != SelectesCards[0].shape {
             return true
         }
         return false
     }
     
-    func checkColor(indices : [Int])->Bool{
-        if cardsOnTable[indices[0]].color == cardsOnTable[indices[1]].color &&
-           cardsOnTable[indices[1]].color == cardsOnTable[indices[2]].color {
+    func checkShading(_ SelectesCards  : [Card])->Bool{
+        if SelectesCards[0].shading == SelectesCards[1].shading &&
+            SelectesCards[1].shading == SelectesCards[2].shading {
             return true
         }
-        if cardsOnTable[indices[0]].color != cardsOnTable[indices[1]].color &&
-           cardsOnTable[indices[1]].color != cardsOnTable[indices[2]].color &&
-           cardsOnTable[indices[2]].color != cardsOnTable[indices[0]].color {
+        if SelectesCards[0].shading != SelectesCards[1].shading &&
+            SelectesCards[1].shading != SelectesCards[2].shading &&
+            SelectesCards[2].shading != SelectesCards[0].shading {
+            return true
+        }
+        return false
+    }
+    
+    func checkColor(_ SelectesCards : [Card])->Bool{
+        if SelectesCards[0].color == SelectesCards[1].color &&
+            SelectesCards[1].color == SelectesCards[2].color {
+            return true
+        }
+        if SelectesCards[0].color != SelectesCards[1].color &&
+            SelectesCards[1].color != SelectesCards[2].color &&
+            SelectesCards[2].color != SelectesCards[0].color {
             return true
         }
         return false
@@ -208,31 +261,66 @@ struct GameModel{
     
     mutating func addThreeCards(){
         
-        if nextDrawnIndex >= 79{
-            outOfCards = true
-            print("deck has no more card")
+        if(newRound){
+            newRound=false
+            nextDrawnIndex = 12
+            for i in 0..<12{
+                cardsOnTable.append(cards[i].id)
+                cards[i].isFaceDown = false
+                cardsInDeck.remove(at: 0)
+            }
         }
         else{
-            print("add 3 cards")
-            if(newCardsNextRound){
-                dealNewCards()
-            }else{
-                for _ in 0..<3
-                {
-                    cardsOnTable.append(cards[nextDrawnIndex])
-                    nextDrawnIndex += 1
+            if cardsInDeck.count < 1 {
+                outOfCards = true
+                print("deck has no more card")
+            }
+            else{
+                print("add 3 cards")
+                if(matchedThisRound){
+                    dealNewCards()
+                }else{
+                    for _ in 0..<3
+                    {
+                        cardsOnTable.append(cardsInDeck[0])
+                        cards[findIndexInCards(cardsInDeck[0])].isFaceDown = false
+                        cardsInDeck.remove(at: 0)
+                    }
+                    
                 }
-                
             }
         }
     }
     
+    mutating func removeMatchedCards(){
+        matchedThisRound=false
+        for card in selectedCards{
+            if(cardsInDeck.count>0){
+                cards[findIndexInCards(card.id)].isSelected = false
+                cards[findIndexInCards(card.id)].isMathced = false
+                discardPile.append(card.id)
+                let removeIndex : Int? = cardsOnTable.firstIndex(of: card.id)
+                cardsOnTable.remove(at: removeIndex!)
+                
+            }
+        }
+        selectedCards.removeAll()
+    }
+    
+    
+//    remove matched ones and deal new
     mutating func dealNewCards(){
-        newCardsNextRound=false
-        for index in selectedCards{
-            if(nextDrawnIndex<81){
-                cardsOnTable[index] = cards[nextDrawnIndex]
-                nextDrawnIndex += 1
+        matchedThisRound=false
+        for card in selectedCards{
+            if(cardsInDeck.count>0){
+                cards[findIndexInCards(card.id)].isSelected = false
+                cards[findIndexInCards(card.id)].isMathced = false
+                discardPile.append(card.id)
+                let removeIndex : Int? = cardsOnTable.firstIndex(of: card.id)
+                cards[findIndexInCards(cardsInDeck[0])].isFaceDown = false
+                cardsOnTable[removeIndex!] = cardsInDeck[0]
+                cardsInDeck.remove(at: 0)
+                
             }
         }
         selectedCards.removeAll()

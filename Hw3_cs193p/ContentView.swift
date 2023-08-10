@@ -10,16 +10,16 @@ import SwiftUI
 struct ContentView: View {
     
     @ObservedObject var game : ViewModel
+    @Namespace private var animationNameSpace
     
-
+    @State var misMatchShakeOffset = [CGFloat](repeating: 0, count: 81)
+    
     func getMinimumCardWidth(_ screenWidth : CGFloat, _ screenHeight : CGFloat)-> CGFloat{
         var rows : CGFloat = 1
         var tempCardWidth = screenWidth / CGFloat(game.cardsOnTable.count)
-        var tempViewHeight = CGFloat(tempCardWidth) * CGFloat(1.5) * rows
- 
+        
         while true
         {
-            print ("\(rows)")
             rows = ceil(((tempCardWidth * CGFloat(game.cardsOnTable.count)) / screenWidth)*1.5)
             
             if (tempCardWidth * CGFloat(1.5) * rows) < screenHeight{
@@ -33,61 +33,134 @@ struct ContentView: View {
         return(tempCardWidth)
     }
     
+    private func dealAnimation(for card : GameModel.Card) -> Animation{
+        var delay = 0.0
+        if let index = game.cards.firstIndex(where: {$0.id == card.id}){
+            delay = Double(index) * (CardConstants.totalDealDuration/Double(game.cards.count))
+        }
+        return Animation.easeOut(duration: CardConstants.dealDuration).delay(delay)
+    }
+    
+    
     var body: some View {
         VStack{
-            GeometryReader{ geometry in
-                ScrollView{
-                    LazyVGrid(columns:[GridItem(.adaptive(minimum:
-                                                            max(70, getMinimumCardWidth(geometry.size.width,geometry.size.height))
-                            ))]){
-                        ForEach (0..<game.cardsOnTable.count, id:\.self) { index in
-                            CardView(number: game.cardsOnTable[index].number,
-                            shapeType: game.cardsOnTable[index].shape,
-                            shading: game.cardsOnTable[index].shading,
-                            color: game.cardsOnTable[index].color,
-                            isSelected: game.cardsOnTable[index].isSelected,
-                            isMatched: game.cardsOnTable[index].isMathced,
-                            misMatch: game.cardsOnTable[index].misMatch)
+            gamebody
+            HStack{
+                Spacer()
+                deckBody
+                Spacer()
+                discardCards
+                Spacer()
+                newGameButton
+            }.padding()
+        }
+    }
+    var gamebody : some View{
+        GeometryReader{ geometry in
+            ScrollView{
+                LazyVGrid(columns:[GridItem(.adaptive(minimum:
+                                                        max(CardConstants.minCardWidthOnScreen, getMinimumCardWidth(geometry.size.width,geometry.size.height))
+                        ))]){
+                    ForEach(game.cardsOnTable, id:\.self) { id in
+                        if let card = game.cards.first(where: {$0.id == id} ){
+                            CardView(card: card)
+                                .matchedGeometryEffect(id: card.id, in: animationNameSpace)
                                 .onTapGesture {
-                                    game.choose(index)
-                                    print(index)
+                                    withAnimation(.spring()){
+                                        game.checkIfNeedRemoveMatchedCards(card)
+                                    }
+                                    game.choose(card)
+                                    
+                                    
+                                    withAnimation(.spring()){
+                                        game.trymatch()
+                                    }
+                                    game.dealMismatch()
+                                    
+                                    withAnimation(Animation.spring(response: 0.2, dampingFraction: 0.2 , blendDuration:  0.2)){
+                                        game.resetShake()
+                                    }
+                                    
+                                    
+                                    
+                                    
                                 }
                         }
-                    }.padding(5)
-                }
-            }
-            HStack{
-                Text("Add 3 cards")
-                    .foregroundColor(game.outOfCards ? .red : .black)
-                    .onTapGesture {
-                    if !game.outOfCards{
-                        game.addThreeCards()
                         
                     }
+                }.padding(5)
+            }
+        }
+    }
+    
+    
+    var deckBody: some View{
+        ZStack{
+            ForEach(game.cardsInDeck, id:\.self) { id in
+                if let card = game.cards.first(where: {$0.id == id} ){
+                    CardView(card: card)
+                        .matchedGeometryEffect(id: card.id, in: animationNameSpace)
+                }
+            }
+        }
+        .frame(width: CardConstants.undealtWidth , height: CardConstants.undealtHeight)
+        .foregroundColor(CardConstants.color)
+        .onTapGesture {
+            if !game.outOfCards{
+                withAnimation(.spring()){
+                    game.addThreeCards()
+                }
 
-                    
-                }
-                Spacer()
-                Text("New game").onTapGesture {
-                    game.newGame()
-                }
-            }.padding()
+            }
+        }
             
+    }
+
+    
+    var discardCards : some View{
+        ZStack{
+            ForEach(game.discardPile, id:\.self) { id in
+                if let card = game.cards.first(where: {$0.id == id} ){
+                    CardView(card: card)
+                        .matchedGeometryEffect(id: card.id, in: animationNameSpace)
+                }
+            }
+
+        }
+        .frame(width: CardConstants.undealtWidth , height: CardConstants.undealtHeight)
+        .onTapGesture {
+            print("\(misMatchShakeOffset),\(game.cards[0].misMatch)")
+        }
+    }
+    
+    var newGameButton : some View{
+        Text("New game").onTapGesture {
+            game.newGame()
         }
     }
 }
 
 
+private struct CardConstants{
+    static let color = Color.pink
+    static let aspectRatio : CGFloat = 2/3
+    static let dealDuration : Double = 0.5
+    static let totalDealDuration : Double = 2
+    static let undealtHeight : CGFloat = 90
+    static let undealtWidth = undealtHeight * aspectRatio
+    static let minCardWidthOnScreen : CGFloat = 60
+}
+
 
 struct CardView: View{
-    var number : Int
-    var shapeType : GameModel.Shape
-    var shading : GameModel.Shading
-    var color : GameModel.Color
-    var isSelected : Bool
-    var isMatched : Bool
-    var misMatch : Bool
     
+    var card : GameModel.Card
+    
+    
+    func getShake(_ input:Bool) -> Bool {
+        return input
+    }
+  
     func getColor(whichColor : GameModel.Color) -> Color{
         switch whichColor{
         case .Blue:
@@ -114,35 +187,44 @@ struct CardView: View{
         let backGroundShape = RoundedRectangle(cornerRadius: DrawingConstants.cornerRadius)
         GeometryReader{ geomerty in
             ZStack{
-                backGroundShape.fill().foregroundColor(isMatched ? .yellow.opacity(0.3) : .white)
-                backGroundShape.fill().foregroundColor(misMatch ? .black.opacity(0.3) : .white.opacity(0))
+                backGroundShape.fill().foregroundColor(card.isMathced ? .yellow.opacity(0.3) : .white)
+                backGroundShape.fill().foregroundColor(card.misMatch ? .black.opacity(0.3) : .white.opacity(0))
                 backGroundShape
                     .strokeBorder(lineWidth: DrawingConstants.lineWidth)
-                    .foregroundColor(isSelected ? .orange: .black)
+                    .foregroundColor(card.isSelected ? .orange: .black)
                 VStack{
-                    ForEach(0..<Int(number),id: \.self){number in
-                        switch shapeType {
+                    ForEach(0..<Int(card.number),id: \.self){number in
+                        switch card.shape {
                         case .Diamond:
                             ZStack{
                                 diamond().stroke()
-                                diamond().opacity(getShade(whichShade: shading))
+                                diamond().opacity(getShade(whichShade: card.shading))
                             }
                         case .Squiggle:
                             ZStack{
                                 squiggle().stroke()
-                                squiggle().opacity(getShade(whichShade: shading))
+                                squiggle().opacity(getShade(whichShade: card.shading))
                             }
                         case .Oval:
                             ZStack{
                                 oval().stroke()
-                                oval().opacity(getShade(whichShade: shading))
+                                oval().opacity(getShade(whichShade: card.shading))
                             }
                         }
                     }
+                    
                 }
-                .foregroundColor(getColor(whichColor: color))
+                .foregroundColor(getColor(whichColor: card.color))
+                if(card.isFaceDown){
+                    backGroundShape.fill().foregroundColor(.pink)
+                }
 
-            }.padding(0)
+            }
+            
+            .rotationEffect(Angle(degrees: card.isMathced ? 360 : 0 ))
+            .offset(x : card.misMatchShake ? 30 : 0)
+            .padding(0)
+            
         }.aspectRatio(2/3 , contentMode: .fill)
     }
 }

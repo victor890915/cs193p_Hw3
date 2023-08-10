@@ -20,8 +20,16 @@ class ViewModel : ObservableObject{
     var cards: Array<GameModel.Card>{
         return model.cards
     }
-    var cardsOnTable:Array<GameModel.Card>{
+    var cardsOnTable:Array<Int>{
         return model.cardsOnTable
+    }
+    
+    var cardsInDeck:Array<Int>{
+        return model.cardsInDeck
+    }
+    
+    var discardPile:Array<Int>{
+        return model.discardPile
     }
     
     var outOfCards:Bool{
@@ -29,8 +37,21 @@ class ViewModel : ObservableObject{
     }
     
     // MARK: -Intent(s)
-    func choose(_ card:Int){
+    func checkIfNeedRemoveMatchedCards(_ card:Card){
+        model.checkIfNeedRemoveMatchedCards(card)
+    }
+    
+    func choose(_ card:Card){
         model.choose(card)
+    }
+    func trymatch(){
+        model.tryMatch()
+    }
+    func dealMismatch(){
+        model.dealMismatch()
+    }
+    func resetShake(){
+        model.resetShake()
     }
     func addThreeCards(){
         model.addThreeCards()
